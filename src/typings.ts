@@ -10,13 +10,18 @@ type OnLocationChangeEvent = {
   };
 };
 
+type OnRouteProgressChangeType = {
+  distanceTraveled: number;
+  durationRemaining: number;
+  fractionTraveled: number;
+  distanceRemaining: number;
+  distance: string;
+  mode: string;
+  instruction:string;
+  bannerInstructionText: string;
+};
 type OnRouteProgressChangeEvent = {
-  nativeEvent?: {
-    distanceTraveled: number;
-    durationRemaining: number;
-    fractionTraveled: number;
-    distanceRemaining: number;
-  };
+  nativeEvent?: OnRouteProgressChangeType
 };
 
 type OnErrorEvent = {
@@ -37,4 +42,9 @@ export interface IMapboxNavigationProps {
   showsEndOfRouteFeedback?: boolean;
   hideStatusView?: boolean;
   mute?: boolean;
+  waypoints?: Coordinate[];
+  vehicleMaxHeight?: number;
+  vehicleMaxWidth?: number;
+  profile: 'walking' | 'cycling' | 'driving';
+  language: 'en' | 'fr'
 }

@@ -79,6 +79,18 @@ import com.mapbox.navigation.ui.voice.model.SpeechVolume
 import java.util.Locale
 import com.facebook.react.uimanager.events.RCTEventEmitter
 
+import com.mapbox.navigation.ui.maps.route.line.model.RouteLineColorResources
+import com.mapbox.navigation.ui.maps.route.line.model.RouteLineResources
+import android.graphics.Color;
+import android.os.Build
+import android.util.Log
+import android.widget.TextView
+import androidx.annotation.RequiresApi
+import androidx.constraintlayout.widget.ConstraintLayout
+import com.mapbox.api.directions.v5.DirectionsCriteria.ProfileCriteria
+import com.mapbox.navigation.ui.maneuver.model.StepDistance
+import com.mapbox.navigation.utils.internal.android.updateLayoutParams
+
 class MapboxNavigationView(private val context: ThemedReactContext, private val accessToken: String?) :
     FrameLayout(context.baseContext) {
 
@@ -87,9 +99,15 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
     }
 
     private var origin: Point? = null
+    private var waypoints: List<Point>? = null
     private var destination: Point? = null
     private var shouldSimulateRoute = false
     private var showsEndOfRouteFeedback = false
+    private var maxHeight: Double? = null
+    private var maxWidth: Double? = null
+    private var profile: String = DirectionsCriteria.PROFILE_WALKING
+    private var language: String = Locale.FRENCH.language
+
     /**
      * Debug tool used to play, pause and seek route progress events that can be used to produce mocked location updates along the route.
      */
@@ -311,6 +329,7 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
     /**
      * Gets notified with progress along the currently active route.
      */
+    @RequiresApi(Build.VERSION_CODES.M)
     private val routeProgressObserver = RouteProgressObserver { routeProgress ->
         // update the camera position to account for the progressed fragment of the route
         viewportDataSource.onRouteProgressChanged(routeProgress)
@@ -334,25 +353,72 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
                 ).show()
             },
             {
+            // Author: Fedi Sarray
+                val stepDistanceView = binding.maneuverView.findViewById<TextView>(R.id.stepDistance)
+                stepDistanceView?.let {
+                    // Update text appearance
+                    it.setTextAppearance(R.style.StepDistanceRemainingAppearance)
+
+                    // Adjust layout parameters if needed
+                    val layoutParams = it.layoutParams as ConstraintLayout.LayoutParams
+                    // Set margins directly in pixels
+                   // layoutParams.topMargin = 70 // in pixels
+                   // layoutParams.leftMargin = 70 // in pixels
+
+
+                    it.layoutParams = layoutParams
+                }
+
+                binding.maneuverViewContainer.visibility = View.VISIBLE
                 binding.maneuverView.visibility = View.VISIBLE
                 binding.maneuverView.updatePrimaryManeuverTextAppearance(R.style.PrimaryManeuverTextAppearance)
                 binding.maneuverView.updateSecondaryManeuverTextAppearance(R.style.ManeuverTextAppearance)
                 binding.maneuverView.updateSubManeuverTextAppearance(R.style.ManeuverTextAppearance)
                 binding.maneuverView.updateStepDistanceTextAppearance(R.style.StepDistanceRemainingAppearance)
                 binding.maneuverView.renderManeuvers(maneuvers)
+                //*/
             }
         )
-
+            // Author: Fedi Sarray
         // update bottom trip progress summary
         binding.tripProgressView.render(
             tripProgressApi.getTripProgress(routeProgress)
         )
+//*/
+// Author: Fedi Sarray
+// Log the current route progress
+// Access current leg progress for maneuvers
+val currentLegProgress = routeProgress.currentLegProgress
 
+val steps = currentLegProgress?.routeLeg?.steps()?.first()
+// maneuver
+val maneuver = steps?.maneuver()
+val instruction = maneuver?.instruction()
+
+// distance done
+val distance = steps?.distance()
+val mode = steps?.mode()
+// bannerInstruction
+val bannerInstruction = steps?.bannerInstructions()?.first()?.primary()
+val bannerInstructionText = steps?.bannerInstructions()?.first()?.primary()?.text()
+
+Log.d("RouteProgress", "maneuver: $maneuvers")
+
+
+// End of ...
         val event = Arguments.createMap()
         event.putDouble("distanceTraveled", routeProgress.distanceTraveled.toDouble())
         event.putDouble("durationRemaining", routeProgress.durationRemaining.toDouble())
         event.putDouble("fractionTraveled", routeProgress.fractionTraveled.toDouble())
         event.putDouble("distanceRemaining", routeProgress.distanceRemaining.toDouble())
+// *********
+// Author: Fedi Sarray
+event.putString("distance",distance?.toString())
+event.putString("mode",mode?.toString())
+event.putString("instruction",instruction?.toString())
+event.putString("bannerInstructionText",bannerInstructionText?.toString())
+//todo: remove this// event.putString("bannerInstruction",bannerInstruction.toString())
+// *********
         context
             .getJSModule(RCTEventEmitter::class.java)
             .receiveEvent(id, "onRouteProgressChange", event)
@@ -559,21 +625,53 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
         speechApi = MapboxSpeechApi(
             context,
             accessToken,
-            Locale.US.language
+            this.language
         )
         voiceInstructionsPlayer = MapboxVoiceInstructionsPlayer(
             context,
             accessToken,
-            Locale.US.language
+            this.language
         )
 
         // initialize route line, the withRouteLineBelowLayerId is specified to place
         // the route line below road labels layer on the map
         // the value of this option will depend on the style that you are using
         // and under which layer the route line should be placed on the map layers stack
-        val mapboxRouteLineOptions = MapboxRouteLineOptions.Builder(context)
-            .withRouteLineBelowLayerId("road-label")
-            .build()
+
+// Author: Fedi Sarray
+
+val colorGradient = mapOf(
+    "default" to Color.parseColor("#20A5AA"),  // Default color for the route
+    "restricted" to Color.parseColor("#FF0000"), // Restricted road color (red)
+    "traveled" to Color.parseColor("#4CAF50"),   // Route line traveled (green)
+    "closure" to Color.parseColor("#FFA500"),     // Route closure color (orange)
+    "lowCongestion" to Color.parseColor("#00FF00"), // Low congestion (light green)
+    "moderateCongestion" to Color.parseColor("#FFFF00"), // Moderate congestion (yellow)
+    "heavyCongestion" to Color.parseColor("#FF5722"), // Heavy congestion (dark orange)
+    "severeCongestion" to Color.parseColor("#FF0000"), // Severe congestion (red)
+    "unknownCongestion" to Color.parseColor("#20A5AA") // todo: fix Unknown congestion (grey)
+)
+
+  val customColorResources = RouteLineColorResources.Builder()
+          .routeDefaultColor(colorGradient["default"]!!)
+          .restrictedRoadColor(colorGradient["restricted"]!!)
+          .routeLineTraveledColor(colorGradient["traveled"]!!)
+          .routeClosureColor(colorGradient["closure"]!!)
+          .routeLowCongestionColor(colorGradient["lowCongestion"]!!)
+          .routeModerateCongestionColor(colorGradient["moderateCongestion"]!!)
+          .routeHeavyCongestionColor(colorGradient["heavyCongestion"]!!)
+          .routeSevereCongestionColor(colorGradient["severeCongestion"]!!)
+          .routeUnknownCongestionColor(colorGradient["unknownCongestion"]!!)
+          .build()
+
+                val routeLineResources = RouteLineResources.Builder()
+                    .routeLineColorResources(customColorResources)
+                    .build()
+
+                val mapboxRouteLineOptions = MapboxRouteLineOptions.Builder(context)
+                    .withRouteLineResources(routeLineResources)
+                    .withRouteLineBelowLayerId("road-label")
+                    .build()
         routeLineApi = MapboxRouteLineApi(mapboxRouteLineOptions)
         routeLineView = MapboxRouteLineView(mapboxRouteLineOptions)
 
@@ -588,6 +686,7 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
         )
 
         // initialize view interactions
+            // Author: Fedi Sarray
         binding.stop.setOnClickListener {
 //            clearRouteAndStopNavigation() // TODO: figure out how we want to address this since a user cannot reinitialize a route once it is canceled.
             val event = Arguments.createMap()
@@ -596,6 +695,7 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
                 .getJSModule(RCTEventEmitter::class.java)
                 .receiveEvent(id, "onCancelNavigation", event)
         }
+        */
         binding.recenter.setOnClickListener {
             navigationCamera.requestNavigationCameraToFollowing()
             binding.routeOverview.showTextAndExtend(BUTTON_ANIMATION_DURATION)
@@ -627,7 +727,16 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
         mapboxNavigation.registerVoiceInstructionsObserver(voiceInstructionsObserver)
         mapboxNavigation.registerRouteProgressObserver(replayProgressObserver)
 
-        this.origin?.let { this.destination?.let { it1 -> this.findRoute(it, it1) } }
+            // Author: Fedi Sarray
+        // Create a list of coordinates that includes origin, destination, and waypoints
+        val coordinatesList = mutableListOf<Point>()
+        this.origin?.let { coordinatesList.add(it) }
+        this.waypoints?.let {
+            coordinatesList.addAll(it.take(23))
+        }
+            this.destination?.let { coordinatesList.add(it) }
+
+        findRoute(coordinatesList,this.profile)
     }
 
     override fun onDetachedFromWindow() {
@@ -649,16 +758,33 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
         voiceInstructionsPlayer.shutdown()
     }
 
-    private fun findRoute(origin: Point, destination: Point) {
+            // Author: Fedi Sarray
+    private fun findRoute(coordinates: List<Point>, profile: String) {
         try {
+            val routeOptionsBuilder = RouteOptions.builder()
+            .applyDefaultNavigationOptions()
+            .applyLanguageAndVoiceUnitOptions(context)
+            .coordinatesList(coordinates)
+            .waypointIndicesList(listOf(0, coordinates.size-1))
+               .annotationsList(
+                    listOf(
+                        DirectionsCriteria.ANNOTATION_CONGESTION,
+                        DirectionsCriteria.ANNOTATION_MAXSPEED,
+                        DirectionsCriteria.ANNOTATION_SPEED,
+                        DirectionsCriteria.ANNOTATION_DURATION,
+                        DirectionsCriteria.ANNOTATION_DISTANCE
+                    )
+                )
+            .profile(profile) // Use the profile parameter here
+            .steps(true)
+
+            maxHeight?.let { routeOptionsBuilder.maxHeight(it) }
+            maxWidth?.let { routeOptionsBuilder.maxWidth(it) }
+
+            val routeOptions = routeOptionsBuilder.build()
+
             mapboxNavigation.requestRoutes(
-                RouteOptions.builder()
-                    .applyDefaultNavigationOptions()
-                    .applyLanguageAndVoiceUnitOptions(context)
-                    .coordinatesList(listOf(origin, destination))
-                    .profile(DirectionsCriteria.PROFILE_DRIVING)
-                    .steps(true)
-                    .build(),
+                routeOptions,
                 object : RouterCallback {
                     override fun onRoutesReady(
                         routes: List<DirectionsRoute>,
@@ -725,7 +851,9 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
 
         // hide UI elements
         binding.soundButton.visibility = View.INVISIBLE
+        binding.maneuverViewContainer.visibility = View.INVISIBLE
         binding.maneuverView.visibility = View.INVISIBLE
+
         binding.routeOverview.visibility = View.INVISIBLE
         binding.tripProgressCard.visibility = View.INVISIBLE
     }
@@ -748,6 +876,10 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
     fun setOrigin(origin: Point?) {
         this.origin = origin
     }
+            // Author: Fedi Sarray
+    fun setWaypoints(waypoints: List<Point>) {
+        this.waypoints = waypoints
+    }
 
     fun setDestination(destination: Point?) {
         this.destination = destination
@@ -764,4 +896,23 @@ class MapboxNavigationView(private val context: ThemedReactContext, private val 
     fun setMute(mute: Boolean) {
         this.isVoiceInstructionsMuted = mute
     }
+            // Author: Fedi Sarray
+    fun setMaxHeight(maxHeight: Double?) {
+        this.maxHeight = maxHeight
+    }
+
+    fun setMaxWidth(maxWidth: Double?) {
+        this.maxWidth = maxWidth
+    }
+
+    fun setProfile(profile: String) {
+        this.profile = profile
+    }
+
+     fun setLanguage(lng: String) {
+        if(lng=="fr")
+            this.language = Locale.FRENCH.language
+        else
+            this.language = Locale.ENGLISH.language
+     }
 }

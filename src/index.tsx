@@ -8,8 +8,7 @@ const MapboxNavigation = (props: IMapboxNavigationProps) => {
 };
 
 const RNMapboxNavigation = requireNativeComponent(
-  'MapboxNavigation',
-  MapboxNavigation
+  'MapboxNavigation'
 );
 
 const styles = StyleSheet.create({
